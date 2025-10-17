@@ -1,0 +1,703 @@
+# 🧩 What is Fiber?
+
+**Fiber** is a **web framework for Go (Golang)** built on top of **`fasthttp`**, the fastest HTTP engine in Go.
+
+> 🟢 Think of Fiber as **Express.js for Go** — it’s designed to feel familiar if we’ve worked with Node.js/Express before.
+
+Its full name is **Go Fiber**, and it’s maintained under the module:
+
+```
+github.com/gofiber/fiber/v2
+```
+
+---
+
+# ⚙️ Why Fiber was created
+
+Go’s built-in `net/http` package is solid and minimal, but:
+
+* It’s a bit low-level for building REST APIs quickly.
+* It doesn’t include built-in features like routing groups, middleware chains, static file serving, etc.
+* The `fasthttp` library was created to solve **performance bottlenecks** — it’s much faster but not fully compatible with `net/http`.
+
+👉 So Fiber was built **on top of fasthttp** to combine:
+
+* The **speed** of fasthttp,
+* The **ease of use** of Express.js.
+
+---
+
+# 🚀 Core features of Fiber
+
+| Feature                       | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| ⚡ **Fast performance**        | Built on top of `fasthttp`, one of the fastest HTTP engines for Go.         |
+| 🧱 **Express-like syntax**    | Familiar API (`app.Get`, `app.Post`, `app.Use`, etc.).                      |
+| 🔗 **Middleware support**     | Easy middleware chaining, like logging, CORS, JWT, etc.                     |
+| 🧍 **Routing groups**         | Organize routes logically (e.g., `/api/v1/users`).                          |
+| 📦 **Static file serving**    | Serve React build files or images easily.                                   |
+| 🧠 **Context-based API**      | Each request has its own `fiber.Ctx`, similar to Express’s `req` and `res`. |
+| 🧰 **Built-in utilities**     | JSON handling, cookies, file uploads, etc.                                  |
+| 🔐 **Third-party middleware** | Ready-to-use official middlewares (e.g., CORS, compression, JWT).           |
+
+---
+
+# 🧠 Fiber Architecture Overview
+
+```
+HTTP Request
+    ↓
+fasthttp engine (low-level)
+    ↓
+Fiber Context (fiber.Ctx)
+    ↓
+Middleware Chain (logging, auth, cors, etc.)
+    ↓
+Route Handler
+    ↓
+Response written to client
+```
+
+Everything flows through the `fiber.Ctx` (context object) — which holds the request, response, params, body, etc.
+
+---
+
+# 🧩 Fiber Project Setup
+
+## Step 1. Initialize Go module
+
+```bash
+go mod init myapp
+```
+
+## Step 2. Install Fiber
+
+```bash
+go get github.com/gofiber/fiber/v2
+```
+
+## Step 3. Basic example (`main.go`)
+
+```go
+package main
+
+import "github.com/gofiber/fiber/v2"
+
+func main() {
+	app := fiber.New() // create new Fiber instance
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, Fiber 👋")
+	})
+
+	app.Listen(":3000")
+}
+```
+
+Run:
+
+```bash
+go run main.go
+```
+
+Visit **[http://localhost:3000](http://localhost:3000)**
+
+---
+
+# 🔧 Core Concepts
+
+Let’s explore Fiber’s most important building blocks 👇
+
+---
+
+## 1️⃣ `fiber.App` — The main application instance
+
+It represents our web server.
+We create it using:
+
+```go
+app := fiber.New()
+```
+
+We can also pass configuration options:
+
+```go
+app := fiber.New(fiber.Config{
+    AppName: "Task Manager API",
+})
+```
+
+---
+
+## 2️⃣ `fiber.Ctx` — The Context
+
+Every route handler receives a **context object (`c *fiber.Ctx`)** that represents the current request.
+
+We use it to:
+
+* Read data → `c.Params()`, `c.Query()`, `c.Body()`, `c.Get()`
+* Write response → `c.SendString()`, `c.JSON()`, `c.Status()`
+* Manage cookies, headers, etc.
+
+Example:
+
+```go
+app.Post("/login", func(c *fiber.Ctx) error {
+	data := new(User)
+	if err := c.BodyParser(data); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid body"})
+	}
+	return c.JSON(fiber.Map{"message": "Welcome " + data.Username})
+})
+```
+
+---
+
+## 3️⃣ Routing
+
+Fiber has simple route definitions:
+
+```go
+app.Get("/users", getUsers)
+app.Post("/users", createUser)
+app.Put("/users/:id", updateUser)
+app.Delete("/users/:id", deleteUser)
+```
+
+Route groups (for versioning or modularity):
+
+```go
+api := app.Group("/api")
+v1 := api.Group("/v1")
+
+v1.Get("/tasks", getTasks)
+v1.Post("/tasks", createTask)
+```
+
+---
+
+## 4️⃣ Middleware
+
+Middlewares are executed **before** the final handler — used for logging, auth, etc.
+
+Global middleware:
+
+```go
+app.Use(logger.New()) // logs every request
+app.Use(cors.New())   // enable CORS
+```
+
+Per-route middleware:
+
+```go
+app.Get("/admin", isAuthenticated, adminHandler)
+```
+
+Example custom middleware:
+
+```go
+func isAuthenticated(c *fiber.Ctx) error {
+	token := c.Get("Authorization")
+	if token == "" {
+		return c.Status(401).SendString("Unauthorized")
+	}
+	return c.Next()
+}
+```
+
+---
+
+## 5️⃣ Static Files
+
+To serve React frontend:
+
+```go
+app.Static("/", "./client/dist")
+```
+
+This serves files generated by:
+
+```bash
+npm run build
+```
+
+and lets Fiber handle routes for the React app.
+
+---
+
+## 6️⃣ JSON & Body Handling
+
+Fiber can automatically parse JSON:
+
+```go
+type Task struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+app.Post("/task", func(c *fiber.Ctx) error {
+	task := new(Task)
+	if err := c.BodyParser(task); err != nil {
+		return err
+	}
+	return c.JSON(task)
+})
+```
+
+---
+
+## 7️⃣ Error Handling
+
+Custom error handler:
+
+```go
+app := fiber.New(fiber.Config{
+	ErrorHandler: func(c *fiber.Ctx, err error) error {
+		code := fiber.StatusInternalServerError
+		if e, ok := err.(*fiber.Error); ok {
+			code = e.Code
+		}
+		return c.Status(code).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	},
+})
+```
+
+---
+
+## 8️⃣ Fiber Middlewares (Official)
+
+Commonly used:
+
+```bash
+go get github.com/gofiber/fiber/v2/middleware/{cors,logger,recover,jwt,compress}
+```
+
+Examples:
+
+```go
+app.Use(logger.New())
+app.Use(recover.New()) // recover from panics
+app.Use(cors.New(cors.Config{
+	AllowOrigins: "http://localhost:5173",
+	AllowHeaders: "Origin, Content-Type, Accept",
+}))
+```
+
+---
+
+# 🧱 Example Folder Structure (Fullstack Fiber + React)
+
+```
+task-manager/
+│
+├── backend/
+│   ├── main.go
+│   ├── go.mod
+│   ├── air.toml
+│   ├── routes/
+│   │    └── taskRoutes.go
+│   ├── controllers/
+│   │    └── taskController.go
+│   ├── models/
+│   │    └── taskModel.go
+│   └── database/
+│        └── connect.go
+│
+└── client/
+    ├── package.json
+    ├── src/
+    └── dist/
+```
+
+---
+
+# 🧠 Comparison: Fiber vs Express.js
+
+| Feature        | Express.js (Node) | Fiber (Go)               |
+| -------------- | ----------------- | ------------------------ |
+| Language       | JavaScript        | Go                       |
+| Performance    | Fast              | ⚡ Extremely fast         |
+| Type Safety    | Dynamic           | Statically typed         |
+| Hot reload     | nodemon           | air                      |
+| Middleware     | Tons              | Fewer but efficient      |
+| Learning curve | Easy              | Easy if we know Express |
+| Concurrency    | Single-threaded   | Multi-threaded natively  |
+
+---
+
+# 🧮 Benchmarks
+
+Fiber consistently ranks **among the fastest** Go frameworks — handling hundreds of thousands of requests per second.
+
+Because it uses:
+
+* **Zero memory allocations**
+* **Efficient request routing**
+* **fasthttp** under the hood (which is asynchronous)
+
+---
+
+# 🧩 Common Packages to Use with Fiber
+
+| Package     | Purpose                                    |
+| ----------- | ------------------------------------------ |
+| `gorm`      | ORM for databases (PostgreSQL/MySQL/Mongo) |
+| `jwt-go`    | For authentication with JWT tokens         |
+| `validator` | For validating request payloads            |
+| `godotenv`  | For `.env` configuration                   |
+| `air`       | Hot reloading                              |
+| `cors`      | Cross-Origin Resource Sharing              |
+| `logger`    | Logging middleware                         |
+
+---
+
+# ✅ Typical Startup Command
+
+Development:
+
+```bash
+air
+```
+
+Production:
+
+```bash
+go build -o main && ./main
+```
+
+---
+
+# 🧭 Summary
+
+| Concept        | What it Does                       |
+| -------------- | ---------------------------------- |
+| **Fiber**      | High-performance Go web framework  |
+| **fasthttp**   | Underlying HTTP engine             |
+| **fiber.Ctx**  | Request/response context           |
+| **Middleware** | Run logic before route handlers    |
+| **Groups**     | Organize routes logically          |
+| **Static**     | Serve frontend files easily        |
+| **Air**        | Enables live reloading in dev mode |
+
+---
+
+In Fiber, everything — every request, every response, every middleware — flows through this **`Ctx` (context)** object.
+
+---
+
+# 🧩 What is `fiber.Ctx`?
+
+`fiber.Ctx` (short for **context**) represents the **state of a single HTTP request and response**.
+
+Whenever a client (browser, Postman, frontend app, etc.) sends a request to our server:
+
+* Fiber creates a new `Ctx` object,
+* Populates it with information about that request,
+* Passes it to our route handler function,
+* And after we respond, Fiber reuses or releases that context.
+
+👉 **Every request has its own context.**
+
+It’s similar to Express.js’s `req` and `res` objects combined into one.
+
+---
+
+# 🧠 Conceptually
+
+In Express:
+
+```js
+app.get("/user/:id", (req, res) => {
+  res.json({ id: req.params.id })
+})
+```
+
+In Fiber:
+
+```go
+app.Get("/user/:id", func(c *fiber.Ctx) error {
+  return c.JSON(fiber.Map{"id": c.Params("id")})
+})
+```
+
+Here:
+
+* `c` is the context for this particular request.
+* It gives us access to **request data** (params, body, headers, cookies, etc.)
+  and **response methods** (send, status, json, redirect, etc.)
+
+---
+
+# ⚙️ Anatomy of `fiber.Ctx`
+
+Let’s see what `c` (context) gives us access to:
+
+| Category            | Common Methods                                     | Description                                  |
+| ------------------- | -------------------------------------------------- | -------------------------------------------- |
+| 🔍 **Request Info** | `c.Method()`, `c.Path()`, `c.IP()`, `c.Protocol()` | Details about the incoming HTTP request      |
+| 🧾 **Headers**      | `c.Get(key)`, `c.Set(key, value)`                  | Get or set headers                           |
+| 🔢 **Params**       | `c.Params("id")`                                   | Get URL parameters like `/user/:id`          |
+| ❓ **Query**         | `c.Query("q")`                                     | Get query string params like `?q=go`         |
+| 📦 **Body**         | `c.Body()`, `c.BodyParser(obj)`                    | Get or parse request body (JSON, form, etc.) |
+| 🧁 **Cookies**      | `c.Cookies()`, `c.Cookie()`                        | Get or set cookies                           |
+| 🔙 **Response**     | `c.SendString()`, `c.JSON()`, `c.Status()`         | Send responses                               |
+| 🧠 **Flow Control** | `c.Next()`                                         | Move to next middleware                      |
+| 🧩 **Context Data** | `c.Locals()`, `c.Locals(key, value)`               | Store/retrieve values across middlewares     |
+
+---
+
+# 🧪 Common Usage Examples
+
+Let’s go step by step.
+
+---
+
+## 1️⃣ Getting URL Parameters
+
+```go
+app.Get("/user/:id", func(c *fiber.Ctx) error {
+    id := c.Params("id")
+    return c.SendString("User ID: " + id)
+})
+```
+
+URL:
+
+```
+GET /user/42
+```
+
+Output:
+
+```
+User ID: 42
+```
+
+---
+
+## 2️⃣ Getting Query Parameters
+
+```go
+app.Get("/search", func(c *fiber.Ctx) error {
+	query := c.Query("q") // /search?q=task
+	return c.SendString("Search for: " + query)
+})
+```
+
+---
+
+## 3️⃣ Reading Request Body
+
+### Example: raw text
+
+```go
+app.Post("/echo", func(c *fiber.Ctx) error {
+	body := c.Body() // []byte
+	return c.Send(body)
+})
+```
+
+### Example: JSON body → struct
+
+```go
+type Task struct {
+	Title string `json:"title"`
+	Done  bool   `json:"done"`
+}
+
+app.Post("/task", func(c *fiber.Ctx) error {
+	var task Task
+	if err := c.BodyParser(&task); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid body"})
+	}
+	return c.JSON(task)
+})
+```
+
+---
+
+## 4️⃣ Sending JSON Responses
+
+```go
+app.Get("/hello", func(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"message": "Hello from Fiber 👋",
+		"status":  true,
+	})
+})
+```
+
+Equivalent of Express’s `res.json({})`.
+
+---
+
+## 5️⃣ Setting Response Status Code
+
+```go
+return c.Status(201).JSON(fiber.Map{"message": "Created"})
+```
+
+or simply:
+
+```go
+c.Status(404)
+return c.SendString("Not Found")
+```
+
+---
+
+## 6️⃣ Working with Headers
+
+### Get request header:
+
+```go
+token := c.Get("Authorization")
+```
+
+### Set response header:
+
+```go
+c.Set("X-Custom-Header", "Powered-By-Fiber")
+```
+
+---
+
+## 7️⃣ Using Cookies
+
+```go
+// Set cookie
+c.Cookie(&fiber.Cookie{
+	Name:  "session_id",
+	Value: "abc123",
+	Age:   3600,
+})
+
+// Get cookie
+cookie := c.Cookies("session_id")
+```
+
+---
+
+## 8️⃣ Redirects
+
+```go
+return c.Redirect("/login", fiber.StatusFound)
+```
+
+---
+
+## 9️⃣ Store custom data with `c.Locals`
+
+Useful in middleware chains:
+
+```go
+func AuthMiddleware(c *fiber.Ctx) error {
+	c.Locals("userID", "42")
+	return c.Next()
+}
+
+app.Get("/dashboard", AuthMiddleware, func(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	return c.SendString("User ID: " + userID)
+})
+```
+
+This lets us pass data between middlewares and handlers.
+
+---
+
+## 🔟 File Upload Handling
+
+```go
+app.Post("/upload", func(c *fiber.Ctx) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return err
+	}
+	return c.SaveFile(file, "./uploads/"+file.Filename)
+})
+```
+
+---
+
+# ⚙️ Internal Lifecycle of `Ctx`
+
+Here’s what happens behind the scenes:
+
+```
+Client → Request
+         ↓
+  Fiber creates *fiber.Ctx
+         ↓
+  Executes middleware chain
+         ↓
+  Executes route handler
+         ↓
+  Writes response via Ctx
+         ↓
+  Returns response → Client
+```
+
+The `Ctx` is reused internally by Fiber to reduce allocations — which is part of why Fiber is so fast.
+This is why we should **never store `Ctx` in a goroutine** — it may get reused after the request ends.
+
+---
+
+# ⚠️ Important Notes
+
+| Rule                                        | Explanation                                             |
+| ------------------------------------------- | ------------------------------------------------------- |
+| ❌ Don’t use `Ctx` outside request lifecycle | Fiber reuses context objects for efficiency.            |
+| ⚠️ Always return an error or nil            | Fiber expects an `error` return value for control flow. |
+| 🧠 Use `fiber.Map` for simple JSON          | It’s a shorthand for `map[string]interface{}`.          |
+
+---
+
+# 🧩 Example: Full CRUD with `Ctx`
+
+```go
+app.Post("/tasks", func(c *fiber.Ctx) error {
+	var task Task
+	if err := c.BodyParser(&task); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid body"})
+	}
+
+	task.ID = uuid.New().String()
+	db.Create(&task)
+	return c.Status(201).JSON(task)
+})
+
+app.Get("/tasks/:id", func(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var task Task
+	if err := db.First(&task, "id = ?", id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Task not found"})
+	}
+	return c.JSON(task)
+})
+```
+
+Here, `c` handles everything — params, parsing, and responding.
+
+---
+
+# 🧭 Summary
+
+| Purpose         | Example                           |
+| --------------- | --------------------------------- |
+| Get route param | `c.Params("id")`                  |
+| Get query param | `c.Query("page")`                 |
+| Get body        | `c.Body()` / `c.BodyParser(&obj)` |
+| Send string     | `c.SendString("OK")`              |
+| Send JSON       | `c.JSON(fiber.Map{"ok": true})`   |
+| Set status      | `c.Status(404)`                   |
+| Get header      | `c.Get("Authorization")`          |
+| Set header      | `c.Set("X-Header", "Value")`      |
+| Next middleware | `c.Next()`                        |
+| Locals storage  | `c.Locals("userID", id)`          |
+| File upload     | `c.FormFile("file")`              |
+
+---
+
