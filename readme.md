@@ -701,3 +701,730 @@ Here, `c` handles everything — params, parsing, and responding.
 
 ---
 
+Let’s go step by step on how to **download files using Go Fiber** — both in simple and real-world ways.
+
+We’ll cover all cases:
+
+1. 🔹 Downloading a static/local file
+2. 🔹 Forcing the browser to download (not preview)
+3. 🔹 Downloading dynamic or generated files
+4. 🔹 Handling missing files and security
+
+---
+
+## 🧩 1️⃣ Basic File Download — using `c.Download()`
+
+Fiber provides a built-in helper called **`c.Download()`**, which makes file downloads extremely easy.
+
+### Example:
+
+```go
+package main
+
+import "github.com/gofiber/fiber/v2"
+
+func main() {
+	app := fiber.New()
+
+	app.Get("/download", func(c *fiber.Ctx) error {
+		return c.Download("./files/report.pdf")
+	})
+
+	app.Listen(":3000")
+}
+```
+
+➡️ When we visit
+`http://localhost:3000/download`
+Fiber will send the file `./files/report.pdf` to the browser.
+
+---
+
+## ⚙️ 2️⃣ Changing the Downloaded Filename
+
+If we want the file to be downloaded with a **different name**, we can pass a second argument:
+
+```go
+return c.Download("./files/report.pdf", "monthly_report.pdf")
+```
+
+Even if the original file is `report.pdf`, the browser will prompt a download as `monthly_report.pdf`.
+
+---
+
+## 📁 3️⃣ Serving Files Dynamically (based on params)
+
+Suppose we want users to download files by ID or filename dynamically.
+
+```go
+app.Get("/download/:filename", func(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	filePath := "./uploads/" + filename
+
+	return c.Download(filePath)
+})
+```
+
+➡️ Example URL:
+`http://localhost:3000/download/image.png`
+→ downloads `./uploads/image.png`
+
+---
+
+## 🚨 4️⃣ Handling Missing or Invalid Files
+
+Always check if the file exists before calling `c.Download()`.
+Otherwise, Fiber will throw an internal error.
+
+```go
+import (
+	"os"
+	"github.com/gofiber/fiber/v2"
+)
+
+app.Get("/download/:filename", func(c *fiber.Ctx) error {
+	filename := c.Params("filename")
+	filePath := "./uploads/" + filename
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return c.Status(404).SendString("File not found")
+	}
+
+	return c.Download(filePath)
+})
+```
+
+---
+
+## 🧠 5️⃣ Forcing the Browser to Download (not preview)
+
+Some file types (like `.pdf` or `.jpg`) may open in the browser instead of downloading.
+`c.Download()` automatically sets the header:
+
+```
+Content-Disposition: attachment; filename="file.pdf"
+```
+
+That tells the browser: **“download this file”**, not “open it inline.”
+
+You can also set it manually if needed:
+
+```go
+c.Set("Content-Disposition", "attachment; filename=myfile.pdf")
+return c.SendFile("./files/report.pdf")
+```
+
+---
+
+## ⚡ 6️⃣ Downloading Files from Another Directory (absolute path)
+
+```go
+return c.Download("/absolute/path/to/file.zip")
+```
+
+✅ Fiber supports both relative (`./`) and absolute (`/home/user/...`) paths.
+
+---
+
+## 📄 7️⃣ Downloading Generated Content (in-memory files)
+
+Sometimes we want to generate a file (e.g., CSV, text, or JSON) dynamically and let users download it.
+
+### Example: Generate and download CSV
+
+```go
+app.Get("/export", func(c *fiber.Ctx) error {
+	data := "id,name,age\n1,Skyy,29\n2,Aria,26"
+
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", "attachment; filename=data.csv")
+
+	return c.SendString(data)
+})
+```
+
+➡️ This will **create and download** a CSV file instantly without writing to disk.
+
+---
+
+## 🧰 8️⃣ Downloading Binary Data
+
+If the content is binary (like an image or PDF generated from memory):
+
+```go
+app.Get("/pdf", func(c *fiber.Ctx) error {
+	pdfBytes := []byte("%PDF-1.4...") // your PDF byte data
+	c.Set("Content-Type", "application/pdf")
+	c.Set("Content-Disposition", "attachment; filename=generated.pdf")
+	return c.Send(pdfBytes)
+})
+```
+
+---
+
+## 🧩 9️⃣ File Download + Authentication Example
+
+In real-world apps, we often protect downloads using JWT or sessions.
+
+```go
+app.Get("/secure-download/:file", AuthMiddleware, func(c *fiber.Ctx) error {
+	file := c.Params("file")
+	path := "./private/" + file
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return c.Status(404).SendString("File not found")
+	}
+
+	return c.Download(path)
+})
+```
+
+✅ Here the middleware checks auth before allowing download.
+
+---
+
+## 🧠 10️⃣ Summary Table
+
+| Use Case                | Method                      | Example                                 |
+| ----------------------- | --------------------------- | --------------------------------------- |
+| Basic file download     | `c.Download()`              | `c.Download("path/to/file.pdf")`        |
+| Custom filename         | 2nd arg                     | `c.Download("path.pdf", "newname.pdf")` |
+| Dynamic filename        | URL param                   | `c.Params("filename")`                  |
+| Force download          | Auto in `c.Download()`      |                                         |
+| Check file exists       | `os.Stat()`                 | Avoids 500 errors                       |
+| Generate file in memory | `c.SendString()` + headers  | Dynamic CSV, text                       |
+| Secure file access      | Middleware + `c.Download()` | Authenticated routes                    |
+
+---
+
+## ⚙️ Bonus: Serving vs Downloading
+
+| Function                 | Behavior                          |
+| ------------------------ | --------------------------------- |
+| `c.SendFile("file.pdf")` | Displays file in browser (inline) |
+| `c.Download("file.pdf")` | Forces browser to download file   |
+
+---
+
+## ✅ Example Full Implementation
+
+```go
+package main
+
+import (
+	"os"
+	"github.com/gofiber/fiber/v2"
+)
+
+func main() {
+	app := fiber.New()
+
+	app.Get("/download/:file", func(c *fiber.Ctx) error {
+		filename := c.Params("file")
+		path := "./uploads/" + filename
+
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return c.Status(404).SendString("❌ File not found")
+		}
+
+		return c.Download(path, filename)
+	})
+
+	app.Listen(":3000")
+}
+```
+
+---
+
+We'll cover **unit tests, integration tests, middleware tests, table-driven tests, mocks, test organization, coverage, benchmarking, CI**, and practical examples using **Fiber**’s `app.Test()` and Go’s `testing` package.
+
+---
+
+# 1) Testing philosophy & goals
+
+* **Unit tests**: fast, isolated, no real DB or network. Test one function/handler behavior given controlled inputs (use mocks / fakes).
+* **Integration tests**: test multiple components together (e.g., route + real DB or test DB). Slower but catch interaction bugs.
+* **End-to-end tests**: full app running (usually in CI or a test environment).
+* **Benchmarks**: measure performance of handlers or logic with `testing.B`.
+* **Property of good tests**: deterministic, fast, readable, maintainable.
+
+For Fiber, we avoid using `fiber.Ctx` across goroutines or keeping references after the handler returns — tests must respect the lifecycle.
+
+---
+
+# 2) Tools & libs we commonly use
+
+* Standard: `testing`, `net/http/httptest`, `bytes`, `encoding/json`
+* Assertion helpers: `github.com/stretchr/testify/assert` and `require`
+* Mocks: hand-written fakes or `mockery`/`gomock` for interfaces
+* DB test helpers: `sqlmock` for SQL, `mongo-go-driver` with local test DB or test containers for Mongo
+* CI runners / Docker / Testcontainers for heavier integration tests
+
+Install testify:
+
+```bash
+go get github.com/stretchr/testify
+```
+
+---
+
+# 3) How to test Fiber handlers — basic structure
+
+Two approaches:
+
+A) **Handler directly** — call handler with a mocked `fiber.Ctx` (less common, more brittle).
+B) **HTTP-style test** — create requests with `httptest.NewRequest` and call `app.Test(req, timeout)` — recommended, closer to real behavior.
+
+Fiber exposes `app.Test` for this purpose.
+
+### Minimal example (HTTP-style)
+
+```go
+// backend/handlers/hello.go
+package handlers
+
+import "github.com/gofiber/fiber/v2"
+
+func Hello(c *fiber.Ctx) error {
+    return c.JSON(fiber.Map{"message": "hello"})
+}
+```
+
+```go
+// backend/handlers/hello_test.go
+package handlers
+
+import (
+    "net/http/httptest"
+    "testing"
+    "github.com/gofiber/fiber/v2"
+    "github.com/stretchr/testify/assert"
+)
+
+func TestHello(t *testing.T) {
+    app := fiber.New()
+    app.Get("/hello", Hello)
+
+    req := httptest.NewRequest("GET", "/hello", nil)
+    resp, err := app.Test(req, -1) // -1 = no timeout
+    assert.NoError(t, err)
+    assert.Equal(t, 200, resp.StatusCode)
+}
+```
+
+This style runs middleware + routing and is realistic.
+
+---
+
+# 4) Table-driven tests (Go idiom)
+
+Great for many input variations.
+
+```go
+func TestHelloTable(t *testing.T) {
+    app := fiber.New()
+    app.Get("/echo", func(c *fiber.Ctx) error {
+        return c.SendString(c.Query("q"))
+    })
+
+    tests := []struct{
+        name string
+        q    string
+        want string
+        code int
+    }{
+        {"empty", "", "", 200},
+        {"hello", "hello", "hello", 200},
+    }
+
+    for _, tc := range tests {
+        t.Run(tc.name, func(t *testing.T) {
+            req := httptest.NewRequest("GET", "/echo?q="+tc.q, nil)
+            resp, err := app.Test(req, -1)
+            require.NoError(t, err)
+            b, _ := io.ReadAll(resp.Body)
+            assert.Equal(t, tc.want, string(b))
+            assert.Equal(t, tc.code, resp.StatusCode)
+        })
+    }
+}
+```
+
+---
+
+# 5) Testing JSON bodies & parsing (`c.BodyParser`)
+
+```go
+func TestCreateTask(t *testing.T) {
+    app := fiber.New()
+    app.Post("/tasks", CreateTaskHandler)
+
+    payload := `{"title":"buy milk","done":false}`
+    req := httptest.NewRequest("POST", "/tasks", strings.NewReader(payload))
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := app.Test(req, -1)
+    require.NoError(t, err)
+    assert.Equal(t, 201, resp.StatusCode)
+    var got map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&got)
+    assert.Equal(t, "buy milk", got["title"])
+}
+```
+
+---
+
+# 6) Testing middleware
+
+We can assert middleware effects (headers, Locals, auth):
+
+### Example: auth middleware sets `userID` in Locals
+
+```go
+func AuthMiddleware(c *fiber.Ctx) error {
+    token := c.Get("Authorization")
+    if token == "" { return c.Status(401).SendString("unauth") }
+    c.Locals("userID", "u-1")
+    return c.Next()
+}
+
+func TestAuthMiddleware(t *testing.T) {
+    app := fiber.New()
+    app.Use(AuthMiddleware)
+    app.Get("/me", func(c *fiber.Ctx) error {
+        id := c.Locals("userID").(string)
+        return c.SendString(id)
+    })
+
+    // Missing token -> 401
+    req := httptest.NewRequest("GET", "/me", nil)
+    resp, _ := app.Test(req, -1)
+    assert.Equal(t, 401, resp.StatusCode)
+
+    // With token -> ok
+    req = httptest.NewRequest("GET", "/me", nil)
+    req.Header.Set("Authorization", "Bearer x")
+    resp, _ = app.Test(req, -1)
+    body, _ := io.ReadAll(resp.Body)
+    assert.Equal(t, "u-1", string(body))
+}
+```
+
+---
+
+# 7) Testing file upload + download
+
+**Upload (multipart/form-data)** — build a `multipart.Writer`.
+
+```go
+func TestUpload(t *testing.T) {
+    app := fiber.New()
+    app.Post("/upload", UploadHandler)
+
+    var b bytes.Buffer
+    w := multipart.NewWriter(&b)
+    fw, _ := w.CreateFormFile("file", "test.txt")
+    fw.Write([]byte("hello"))
+    w.Close()
+
+    req := httptest.NewRequest("POST", "/upload", &b)
+    req.Header.Set("Content-Type", w.FormDataContentType())
+
+    resp, _ := app.Test(req, -1)
+    assert.Equal(t, 200, resp.StatusCode)
+}
+```
+
+**Download** — assert `Content-Disposition` header and body.
+
+```go
+func TestDownload(t *testing.T) {
+    app := fiber.New()
+    app.Get("/download", func(c *fiber.Ctx) error {
+        return c.Download("./testdata/sample.txt", "out.txt")
+    })
+
+    req := httptest.NewRequest("GET", "/download", nil)
+    resp, _ := app.Test(req, -1)
+    assert.Equal(t, 200, resp.StatusCode)
+    assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment;")
+}
+```
+
+---
+
+# 8) Unit testing handlers with mocked services (dependency injection)
+
+Best practice: make handlers depend on **interfaces** (service layer), so we can pass fakes in tests.
+
+### Service interface
+
+```go
+type TaskService interface {
+    Create(t Task) (Task, error)
+    Get(id string) (Task, error)
+}
+```
+
+### Handler factory
+
+```go
+type Handler struct { svc TaskService }
+
+func NewHandler(s TaskService) *Handler { return &Handler{svc: s} }
+
+func (h *Handler) CreateTask(c *fiber.Ctx) error {
+    var t Task
+    if err := c.BodyParser(&t); err != nil { return c.Status(400).SendString("bad") }
+    created, err := h.svc.Create(t)
+    if err != nil { return c.Status(500).SendString("err") }
+    return c.Status(201).JSON(created)
+}
+```
+
+### Fake in tests
+
+```go
+type fakeService struct{}
+func (f fakeService) Create(t Task) (Task, error) {
+    t.ID = "f-1"
+    return t, nil
+}
+
+func TestCreateTaskUsingFake(t *testing.T) {
+    app := fiber.New()
+    h := NewHandler(fakeService{})
+    app.Post("/tasks", h.CreateTask)
+
+    req := httptest.NewRequest("POST", "/tasks", strings.NewReader(`{"title":"x"}`))
+    req.Header.Set("Content-Type", "application/json")
+    resp, _ := app.Test(req, -1)
+    assert.Equal(t, 201, resp.StatusCode)
+    var got Task
+    json.NewDecoder(resp.Body).Decode(&got)
+    assert.Equal(t, "f-1", got.ID)
+}
+```
+
+This keeps tests isolated from DB.
+
+---
+
+# 9) Using `sqlmock` or test DBs for integration tests
+
+* For SQL + GORM: `DATASTORE` interactions can be tested with `github.com/DATA-DOG/go-sqlmock`.
+* For MongoDB: use a **test container** (Docker) or an ephemeral in-memory DB if available, or a local Mongo test instance.
+* Alternative: in CI spin up databases via Docker Compose or Testcontainers.
+
+Basic `sqlmock` pattern:
+
+```go
+db, mock, _ := sqlmock.New()
+defer db.Close()
+// expect query, return rows
+mock.ExpectQuery("SELECT .* FROM tasks").WillReturnRows(sqlmock.NewRows([]string{"id","title"}).AddRow("1","x"))
+// inject db into repository and run function
+```
+
+---
+
+# 10) Error handling & assertions
+
+Use `require` for fatal assertions (stop test on failure), `assert` for non-fatal.
+
+```go
+require.NoError(t, err) // stops test if err != nil
+assert.Equal(t, want, got) // records failure but continues
+```
+
+---
+
+# 11) Testing concurrency & avoiding pitfalls
+
+* Don’t share `fiber.Ctx` between goroutines — it may be reused.
+* If a handler spawns goroutines, avoid using `c` inside them after handler returns. Instead copy needed values (e.g., `userID := c.Locals("userID")`) and pass those.
+* In tests that check background processes, use synchronization (channels, WaitGroup) to make deterministic assertions.
+
+---
+
+# 12) Benchmarking with `testing.B`
+
+We can benchmark handler logic (not full HTTP stack) or do `b.N` requests via `app.Test` for rough throughput (slower).
+
+Example:
+
+```go
+func BenchmarkProcessTask(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        // measure the function that processes tasks (not network)
+        ProcessTask(someInput)
+    }
+}
+```
+
+Run:
+
+```bash
+go test -bench . -benchmem
+```
+
+---
+
+# 13) Test coverage, race detector, and flags
+
+* Run all tests with verbose:
+
+```bash
+go test ./... -v
+```
+
+* Coverage:
+
+```bash
+go test ./... -coverprofile=cover.out
+go tool cover -html=cover.out
+```
+
+* Race detector (helpful for concurrency bugs):
+
+```bash
+go test ./... -race
+```
+
+* Run a specific test:
+
+```bash
+go test -run TestCreateTask
+```
+
+---
+
+# 14) CI practices
+
+* Run `go test ./...` + `-race` in CI (if feasible).
+* Generate coverage and fail build if coverage < threshold (custom script).
+* For integration tests needing DB: use Docker Compose fixtures or Testcontainers; run them as separate job or in pre-step.
+
+Example GitHub Actions step:
+
+```yaml
+- name: Run tests
+  run: |
+    go test ./... -v -coverprofile=cover.out
+    go tool cover -func=cover.out | grep total | awk '{print $3}' | sed 's/%//' | xargs -I{} test "{}" -gt 80
+```
+
+(We’d adapt exact coverage check per project.)
+
+---
+
+# 15) Example: comprehensive test file for a CRUD handler
+
+Below is a representative example that demonstrates many patterns (DI, table tests, JSON, assertions).
+
+```go
+// handlers/task_test.go
+package handlers
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http/httptest"
+    "testing"
+    "github.com/gofiber/fiber/v2"
+    "github.com/stretchr/testify/require"
+)
+
+type fakeSvc struct {}
+func (f fakeSvc) Create(t Task) (Task, error) {
+    t.ID = "f-1"
+    return t, nil
+}
+
+func TestCreateTaskHandler(t *testing.T) {
+    app := fiber.New()
+    h := NewHandler(fakeSvc{})
+    app.Post("/tasks", h.CreateTask)
+
+    t.Run("valid payload", func(t *testing.T) {
+        payload := Task{Title: "buy eggs"}
+        b, _ := json.Marshal(payload)
+        req := httptest.NewRequest("POST", "/tasks", bytes.NewReader(b))
+        req.Header.Set("Content-Type", "application/json")
+
+        resp, err := app.Test(req, -1)
+        require.NoError(t, err)
+        require.Equal(t, 201, resp.StatusCode)
+
+        var got Task
+        json.NewDecoder(resp.Body).Decode(&got)
+        require.Equal(t, "f-1", got.ID)
+        require.Equal(t, "buy eggs", got.Title)
+    })
+
+    t.Run("invalid json", func(t *testing.T) {
+        req := httptest.NewRequest("POST", "/tasks", bytes.NewReader([]byte("{{bad")))
+        req.Header.Set("Content-Type", "application/json")
+        resp, _ := app.Test(req, -1)
+        require.Equal(t, 400, resp.StatusCode)
+    })
+}
+```
+
+---
+
+# 16) Advanced: testing error flows, timeouts, and context cancellation
+
+* Test timeouts by injecting services that sleep longer than allowed.
+* Use contexts for cancellation; ensure handlers respect cancellation signals.
+* For long-running handlers, we can simulate `context.Context` with deadlines, but Fiber uses its own `Ctx`. For background tasks, use standard `context.Context` passed into services.
+
+---
+
+# 17) Test organization conventions
+
+```
+backend/
+  handlers/
+    task.go
+    task_test.go
+  service/
+    task_service.go
+    task_service_test.go
+  repository/
+    pg_repo.go
+    pg_repo_test.go
+  testdata/          # sample files
+  mocks/             # auto-generated mocks if any
+```
+
+* Keep tests next to code (`*_test.go`) for discoverability.
+* Use `testdata/` for static files used by tests.
+
+---
+
+# 18) Practical tips & gotchas
+
+* **Don’t rely on global state** (configs, DB connections) that tests mutate. If global is necessary, ensure setup/teardown resets them (`TestMain`).
+* Use `t.Cleanup(...)` to guarantee cleanup (files, DB entries).
+* When testing headers or cookies, inspect `resp.Header` and `resp.Cookies()` accordingly.
+* Use `app.Test(req, -1)` for determinism; timeouts are useful if a handler may hang.
+* If we test many handlers together, reuse a single `app` where appropriate but be mindful of stateful middleware.
+
+---
+
+# 19) Quick checklist when writing tests for Fiber apps
+
+* [ ] Use dependency injection for DB/services.
+* [ ] Prefer `app.Test` over constructing `fiber.Ctx` manually.
+* [ ] Use `httptest.NewRequest` to build requests (JSON, multipart, etc.).
+* [ ] Check status code, headers, and response body.
+* [ ] Write table-driven tests for many cases.
+* [ ] Mock external dependencies (DB, external APIs).
+* [ ] Run `go test -race` locally for concurrent code.
+* [ ] Add integration tests with a real/test DB in CI.
+* [ ] Keep tests fast — move slow integration tests to separate suite.
+
+---
+
+

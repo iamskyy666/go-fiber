@@ -8,14 +8,11 @@ import (
 )
 
 func main() {
-	app := fiber.New()
-	// all-params
-	app.Get("/user/:name/:age", func (ctx *fiber.Ctx)error  {
-		params:=ctx.AllParams()
-		fmt.Println("name:",params["name"])
-		fmt.Println("age:",params["age"])
+	// download
 
-		return ctx.SendStatus(fiber.StatusOK)
+	app := fiber.New()
+	app.Get("/download", func (ctx *fiber.Ctx)error  {
+		return ctx.Download("./files/sample.txt")
 	})
 
 
