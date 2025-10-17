@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -8,24 +9,18 @@ import (
 
 func main() {
     app := fiber.New()
-	
-app.Route("/user",func(router fiber.Router) {
-	router.Get("/", func (c *fiber.Ctx)error  {
-	return c.SendString("All users 📃")
-  })
-	router.Post("/", func (c *fiber.Ctx)error  {
-	return c.SendString("User Created ✅")
-  })
-	router.Get("/:id", func (c *fiber.Ctx)error  {
-	return c.SendString("X user 👤")
-  })
-	router.Patch("/:id", func (c *fiber.Ctx)error  {
-	return c.SendString("User X Updated ⚙️")
-  })
-  	router.Delete("/:id", func (c *fiber.Ctx)error  {
-	return c.SendString("User X Deleted ☑️")
-  })
+
+
+// forcefully destroying server / graceful shutdown
+
+app.Get("/api",func (c *fiber.Ctx)error  {
+	if c.IP() != "127.0.0.1"{
+		return app.Shutdown()
+	}
+	return c.SendString("Correct IP Address connected.. ✅")
 })
 
     log.Fatal(app.Listen(":3000"))
+
+	fmt.Println("Server Up N Running.. ✅")
 }
