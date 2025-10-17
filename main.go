@@ -7,20 +7,26 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func main() {
+func main(){
+app:= InitApp()
+log.Fatal(app.Listen(":3000"))
+fmt.Println("Server Up N Running.. ✅")
+}
+
+
+func InitApp() *fiber.App{
     app := fiber.New()
 
 
-// forcefully destroying server / graceful shutdown
+// testing
 
-app.Get("/api",func (c *fiber.Ctx)error  {
-	if c.IP() != "127.0.0.1"{
-		return app.Shutdown()
+app.Get("/check-token",func (c *fiber.Ctx)error  {
+	token:=c.Get("Authorization")
+	if token == ""{
+		return c.SendStatus(fiber.StatusUnauthorized)
 	}
-	return c.SendString("Correct IP Address connected.. ✅")
+	return c.SendStatus(fiber.StatusOK)
 })
 
-    log.Fatal(app.Listen(":3000"))
-
-	fmt.Println("Server Up N Running.. ✅")
+	return app
 }
