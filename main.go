@@ -8,8 +8,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+type AuthCookie struct{
+	Username string `cookie:"username"`
+	AppTheme string `cookie:"app_theme"`
+}
+
 func main() {
-	// get cookies 🍪
 	app := fiber.New()
 	app.Get("/login", func (ctx *fiber.Ctx)error  {
 		// create cookie
@@ -43,6 +47,23 @@ func main() {
 		ctx.ClearCookie() // clear all cookies
 		// ctx.ClearCookie("app_theme") // clear specific cookies
 			return ctx.SendStatus(fiber.StatusOK)
+	})
+
+	// Cookie-Parser
+	app.Get("/verify-cookie",func (ctx *fiber.Ctx)error  {
+		authC:= new(AuthCookie)
+
+		if err:=ctx.CookieParser(authC); err != nil{
+			return err
+		}
+
+			fmt.Println("Username:",authC.Username)		
+			fmt.Println("App-Theme:",authC.AppTheme)		
+			return ctx.SendStatus(fiber.StatusOK)
+
+			// Output:	
+			// Username: john doe
+			// App-Theme: Dark
 	})
 
 
