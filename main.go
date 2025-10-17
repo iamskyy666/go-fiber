@@ -17,6 +17,7 @@ func main() {
 
 	app := fiber.New()
 	app.Post("/api/pokemon", func (ctx *fiber.Ctx)error  {
+		seasonNum:=9
 		p:=new(Pokemon)
 
 		if err:=ctx.BodyParser(p); err!=nil{
@@ -29,6 +30,7 @@ func main() {
 		return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 			"name":p.Name,
 			"trainer":p.Trainer,
+			"season":seasonNum,
 		})
 	})
 
@@ -39,6 +41,7 @@ func main() {
 
 // JSON-Body:
 // {
-//   "name":"Blaziken 🔥",
-//   "trainer":"May"
+//   "name": "Blaziken 🔥",
+//   "season": 9,
+//   "trainer": "May"
 // }
