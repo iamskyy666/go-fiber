@@ -7,26 +7,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func main(){
-app:= InitApp()
-log.Fatal(app.Listen(":3000"))
-fmt.Println("Server Up N Running.. ✅")
-}
+func main() {
+	app := fiber.New()
+	// all-params
+	app.Get("/user/:name/:age", func (ctx *fiber.Ctx)error  {
+		params:=ctx.AllParams()
+		fmt.Println("name:",params["name"])
+		fmt.Println("age:",params["age"])
+
+		return ctx.SendStatus(fiber.StatusOK)
+	})
 
 
-func InitApp() *fiber.App{
-    app := fiber.New()
-
-
-// testing
-
-app.Get("/check-token",func (c *fiber.Ctx)error  {
-	token:=c.Get("Authorization")
-	if token == ""{
-		return c.SendStatus(fiber.StatusUnauthorized)
-	}
-	return c.SendStatus(fiber.StatusOK)
-})
-
-	return app
+	fmt.Println("Server Up N Running.. ✅")
+	log.Fatal(app.Listen(":3000"))
 }
