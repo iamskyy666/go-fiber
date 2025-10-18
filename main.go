@@ -10,16 +10,18 @@ import (
 
 func main() {
 	// Send, SendStatus, SendFile & Status
-	// Send sets the HTTP response body without copying it. From this point onward the body argument must not be changed.
+	// SendFile transfers the file from the given path. The file is not compressed by default, enable this by passing a 'true' argument Sets the Content-Type response HTTP header field based on the filenames extension.
 	app := fiber.New()
 	
-	app.Get("/:name",func (ctx *fiber.Ctx) error {
-		name:= []byte(ctx.Params("name"))
-
-		return ctx.Send(name)
+	app.Get("/",func (ctx *fiber.Ctx) error {
+		
+		return ctx.SendFile("./files/sample.txt")
 	})
 
+	app.Get("/not-found",func (ctx *fiber.Ctx) error {
+		
+		return ctx.SendFile("./files/404.html")
+	})
 	fmt.Println("Server Up N Running.. ✅")
 	log.Fatal(app.Listen(":3000"))
-
 }
