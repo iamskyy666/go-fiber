@@ -10,18 +10,22 @@ import (
 
 func main() {
 	// Send, SendStatus, SendFile & Status
-	// SendFile transfers the file from the given path. The file is not compressed by default, enable this by passing a 'true' argument Sets the Content-Type response HTTP header field based on the filenames extension.
+	// Status sets the HTTP status for the response. This method is chainable.
 	app := fiber.New()
 	
-	app.Get("/",func (ctx *fiber.Ctx) error {
-		
-		return ctx.SendFile("./files/sample.txt")
-	})
+	app.Get("/fiber", func(c *fiber.Ctx) error {
+  c.Status(fiber.StatusOK)
+  return nil
+})
 
-	app.Get("/not-found",func (ctx *fiber.Ctx) error {
-		
-		return ctx.SendFile("./files/404.html")
-	})
+app.Get("/hello", func(c *fiber.Ctx) error {
+  return c.Status(fiber.StatusBadRequest).SendString("Bad Request")
+})
+
+app.Get("/world", func(c *fiber.Ctx) error {
+  return c.Status(fiber.StatusNotFound).SendFile("./public/404.html")
+})
+	
 	fmt.Println("Server Up N Running.. ✅")
 	log.Fatal(app.Listen(":3000"))
 }
