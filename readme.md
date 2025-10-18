@@ -807,7 +807,7 @@ Content-Disposition: attachment; filename="file.pdf"
 
 That tells the browser: **“download this file”**, not “open it inline.”
 
-You can also set it manually if needed:
+We can also set it manually if needed:
 
 ```go
 c.Set("Content-Disposition", "attachment; filename=myfile.pdf")
@@ -853,7 +853,7 @@ If the content is binary (like an image or PDF generated from memory):
 
 ```go
 app.Get("/pdf", func(c *fiber.Ctx) error {
-	pdfBytes := []byte("%PDF-1.4...") // your PDF byte data
+	pdfBytes := []byte("%PDF-1.4...") // our PDF byte data
 	c.Set("Content-Type", "application/pdf")
 	c.Set("Content-Disposition", "attachment; filename=generated.pdf")
 	return c.Send(pdfBytes)
@@ -1486,7 +1486,7 @@ When the server sets a cookie it can include attributes — these are crucial fo
 
 * **Always use HTTPS** (`Secure` flag) for auth/session cookies.
 * **Set `HttpOnly`** for session tokens — prevents most XSS reads.
-* **Use `SameSite`** (`Lax` or `Strict`) to mitigate CSRF; if you need cross-site (e.g., third-party iframe), use `SameSite=None; Secure` and add CSRF protections.
+* **Use `SameSite`** (`Lax` or `Strict`) to mitigate CSRF; if we need cross-site (e.g., third-party iframe), use `SameSite=None; Secure` and add CSRF protections.
 * **Store only opaque session IDs in cookies**; keep real user data on server-side storage.
 * **Prefer server-side sessions** (session id → server store like Redis) to reduce attack surface.
 * **Short expiry for sensitive cookies** and rotate session ids on privilege changes (login/logout, elevate privileges).
@@ -1646,7 +1646,7 @@ func main() {
 Advantages:
 
 * Sensitive data never stored client-side.
-* You can expire, revoke, or rotate sessions centrally.
+* We can expire, revoke, or rotate sessions centrally.
 * Easy to invalidate sessions (e.g., logout → `sess.Destroy()`).
 
 ---
@@ -1805,6 +1805,407 @@ This keeps the cookie small (session id) and full control on server.
 
 ---
 
+Now, let’s unpack **everything important** about **route params** and **query strings** in **Go + Fiber**, from basic usage to advanced patterns, parsing, validation, security, testing and best practices.
+
+---
+
+# Quick overview (short)
+
+* **Route params (path params)**: parts of the URL path defined in the route (e.g. `/users/:id`). Used for identity (id), hierarchical resources, slugs.
+* **Query params (query string)**: key=value pairs after `?` in URL (e.g. `/search?q=go&page=2`). Used for filtering, pagination, sorts, optional flags.
+* In Fiber, the `fiber.Ctx` gives us helpers: `c.Params(...)` and `c.Query(...)` (plus helpers for defaults and parsing). We convert to types with `strconv` (or use binding helpers) and validate.
+
+---
+
+# 1. Route params (path params)
+
+## Definition & when to use
+
+Route params are part of the path. They identify a specific resource or a hierarchical part of the path:
+
+* Good for identifiers: `/users/:id`, `/tasks/:taskId/comments/:commentId`
+* Good for human-friendly slugs: `/posts/:slug`
+* Not recommended for optional filters — use queries instead.
+
+## Declaring routes in Fiber
+
+```go
+app := fiber.New()
+
+app.Get("/users/:id", func(c *fiber.Ctx) error {
+    id := c.Params("id")
+    return c.SendString("user id: " + id)
+})
+```
+
+## Common patterns
+
+* Single param: `/items/:id`
+* Multiple: `/users/:uid/tasks/:tid`
+* Catch-all (wildcard) to capture rest of path: `/files/*` or `/static/*` — this captures anything after `/files/`
+
+  * Use for serving directories or file-like paths.
+* Route groups for versioning/organization:
+
+```go
+api := app.Group("/api")
+v1 := api.Group("/v1")
+v1.Get("/tasks/:id", handler)
+```
+
+## Retrieving params
+
+* `c.Params("id")` returns the param as string.
+* We rarely keep raw string IDs — convert and validate:
+
+```go
+idStr := c.Params("id")
+id, err := strconv.Atoi(idStr)
+if err != nil {
+    return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+}
+```
+
+(We use `strconv.Atoi` or `uuid.Parse` etc. depending on ID format.)
+
+## Default values / optional params
+
+Fiber route params are **not optional** inside the path: if a route is defined as `/users/:id` the request must include that segment. For optional semantics use query params or define two routes (less common).
+
+## Param validation & parsing
+
+* Convert to the expected type, check bounds, and return clear error codes (400) on bad input.
+* For UUID: `github.com/google/uuid` → `uuid.Parse(idStr)`
+* For integer bounds: `id > 0`, etc.
+
+## Security considerations (route params)
+
+* **Path traversal**: if we use param to build filesystem paths (e.g., `/files/:name` → `./uploads/:name`) sanitize: reject `../` or use canonicalization + root directory checks.
+* **Injection**: validate before passing to DB. Use parameterized queries (no string concatenation) — treat params as untrusted.
+* **Length limits**: limit param length to avoid resource exhaustion.
+
+## Example: get user with param id
+
+```go
+app.Get("/users/:id", func(c *fiber.Ctx) error {
+    idStr := c.Params("id")
+    id, err := strconv.Atoi(idStr)
+    if err != nil {
+        return c.Status(400).JSON(fiber.Map{"error":"invalid id"})
+    }
+    user, err := db.GetUserByID(id) // our repository
+    if err != nil {
+        return c.Status(404).JSON(fiber.Map{"error":"not found"})
+    }
+    return c.JSON(user)
+})
+```
+
+---
+
+# 2. Query parameters (query string)
+
+## Definition & when to use
+
+Query params are after `?` in the URL: `/tasks?q=buy&page=2&limit=20`.
+Use them for:
+
+* Searching / filtering (`q=term`, `status=done`)
+* Pagination (`page`, `limit`, `offset`)
+* Sorting (`sort=-created_at`)
+* Optional flags (`archived=true`)
+
+They are ideal for optional and combinable options.
+
+## Retrieving queries in Fiber
+
+* `c.Query("q")` → returns string or empty string if missing.
+* `c.Query("page", "1")` → returns default if not provided (very useful).
+
+Examples:
+
+```go
+q := c.Query("q")                      // "" if missing
+pageStr := c.Query("page", "1")        // default "1"
+page, _ := strconv.Atoi(pageStr)
+```
+
+## Converting types
+
+Always convert and validate:
+
+```go
+limit, err := strconv.Atoi(c.Query("limit", "20"))
+if err != nil || limit <= 0 || limit > 100 {
+    return c.Status(400).JSON(fiber.Map{"error": "invalid limit"})
+}
+```
+
+## Arrays / multiple values
+
+Two common ways to represent arrays in query strings:
+
+1. **Comma-separated values** (CSV): `?tags=go,web,api`
+
+   * Parse with `strings.Split(c.Query("tags", ""), ",")` and filter empty tokens.
+
+2. **Repeated keys**: `?tag=go&tag=web`
+
+   * Fiber’s simple `c.Query("tag")` returns the first value — to get all repeated values we parse the raw query string (see advanced section) or prefer CSV for simplicity.
+
+Recommendation: pick a convention (CSV vs repeated) and be consistent. CSV is simpler to parse with `c.Query()`.
+
+## Nested / complex filters
+
+For complex filters (e.g., multiple fields), we commonly use well-named keys, e.g.:
+
+```
+/tasks?status=done&assigned=alice&due_before=2025-12-01
+```
+
+Parse each separately; parse dates with `time.Parse(time.RFC3339, ...)` (accept multiple formats if needed).
+
+## Default values and paging
+
+Provide safe defaults for pagination & caps:
+
+```go
+page, _ := strconv.Atoi(c.Query("page", "1"))
+limit, _ := strconv.Atoi(c.Query("limit", "20"))
+if limit > 100 { limit = 100 }
+if page < 1 { page = 1 }
+offset := (page - 1) * limit
+```
+
+## URL-decoding & encoding
+
+Browsers and clients URL-encode values. `c.Query()` returns decoded value (Fiber decodes). When generating URLs on the server, use `url.QueryEscape()` for values we insert into query strings.
+
+---
+
+# 3. Binding queries/params to structs (convenience)
+
+Fiber provides helpers to parse request data into structs (e.g., `c.BodyParser`) — similarly there is support to bind query params into a struct (called `QueryParser` or similar). That’s handy for large sets of optional parameters (e.g., filters, pagination). Example sketch:
+
+```go
+type ListTasksQuery struct {
+    Q      string `query:"q"`
+    Page   int    `query:"page"`
+    Limit  int    `query:"limit"`
+    Status string `query:"status"`
+}
+
+// inside handler:
+var q ListTasksQuery
+if err := c.QueryParser(&q); err != nil {
+    return c.Status(400).JSON(fiber.Map{"error":"invalid query"})
+}
+```
+
+Notes:
+
+* The exact tag name and behavior depends on the Fiber version; check `QueryParser` docs. If in doubt, use manual parsing for clarity.
+
+---
+
+# 4. Putting params & queries together (example)
+
+Full endpoint for listing tasks with filters + path param for user:
+
+```go
+app.Get("/users/:uid/tasks", func(c *fiber.Ctx) error {
+    uid := c.Params("uid")
+    page, _ := strconv.Atoi(c.Query("page", "1"))
+    limit, _ := strconv.Atoi(c.Query("limit", "20"))
+    // sanitize & validate
+    if limit < 1 || limit > 100 { limit = 20 }
+    offset := (page - 1) * limit
+
+    status := c.Query("status", "")        // optional
+    q := c.Query("q", "")                 // search term
+    tasks := db.ListTasksForUser(uid, status, q, offset, limit)
+    return c.JSON(tasks)
+})
+```
+
+---
+
+# 5. Advanced topics
+
+## Wildcards and "catch-all" params
+
+* Use `*` or `*param` (depending on router) to capture the rest of path segments. Useful for file-serving routes like `/static/*`.
+* When using catch-all, we must sanitize the captured value when mapping to disk (prevent `../`).
+
+## Regex-like constraints on params
+
+* Fiber’s router does **not** natively support inline regex constraints like some frameworks; validation is commonly done in handler after retrieving the param. If we need strict route-level matching, use middleware or a router that supports regex paths.
+
+## Low-level access to the raw query
+
+If we need repeated query values (multiple same key) or low-level performance, we can parse `c.Context().QueryArgs()` (fasthttp API) — but that’s advanced and slightly less portable. For most use-cases, CSV or manual parsing suffices.
+
+Example (conceptual):
+
+```go
+// c.Context().QueryArgs() returns a fasthttp.QueryArgs value
+// We can use .Peek("tag") or iterate keys — check fasthttp docs
+```
+
+(We mention this to know it exists; prefer higher-level API for maintainability.)
+
+## Encoding arrays in URLs (recommendation)
+
+* For filters: `?tags=go,web` (CSV) — simple, widely used.
+* For many repeated values from forms/clients that support it, repeated keys are fine but require special handling server-side.
+
+## Performance considerations
+
+* Accessing params and queries is cheap — string ops and small allocations.
+* Avoid heavy parsing or DB calls before validating param format.
+* Parse only what we need; avoid parsing large query strings repeatedly in hot loops.
+
+---
+
+# 6. Validation & security checklist
+
+When using params/queries we must:
+
+* Validate types (int, bool, date, uuids).
+* Apply bounds (page >=1, limit <= max).
+* Sanitize values used in filesystem paths — reject `../`.
+* Use parameterized DB queries to avoid SQL injection.
+* Enforce max length for strings to prevent DoS by oversized values.
+* If values control business logic (e.g., `admin=true`), ensure authorization checks.
+
+---
+
+# 7. Testing params and queries
+
+Use `httptest.NewRequest` and `app.Test(req, -1)`:
+
+```go
+req := httptest.NewRequest("GET", "/users/42/tasks?page=2&limit=5&q=buy", nil)
+resp, err := app.Test(req, -1)
+```
+
+For query-only:
+
+```go
+req := httptest.NewRequest("GET", "/tasks?status=done&tags=go,web", nil)
+```
+
+Assert status codes, response bodies, and ensure invalid inputs produce 400.
+
+---
+
+# 8. Examples & patterns we can copy
+
+### Example 1 — Simple read of param + query
+
+```go
+app.Get("/articles/:slug", func(c *fiber.Ctx) error {
+    slug := c.Params("slug")
+    preview := c.Query("preview", "false")
+    if preview == "true" {
+        // return draft or preview content
+    }
+    article, err := repo.FindBySlug(slug)
+    if err != nil {
+        return c.Status(404).SendString("not found")
+    }
+    return c.JSON(article)
+})
+```
+
+### Example 2 — Pagination & filters (robust)
+
+```go
+app.Get("/tasks", func(c *fiber.Ctx) error {
+    page, err := strconv.Atoi(c.Query("page", "1"))
+    if err != nil || page < 1 { page = 1 }
+
+    limit, err := strconv.Atoi(c.Query("limit", "20"))
+    if err != nil || limit <= 0 { limit = 20 }
+    if limit > 100 { limit = 100 }
+
+    q := strings.TrimSpace(c.Query("q", ""))
+    tags := strings.Split(strings.TrimSpace(c.Query("tags", "")), ",") // CSV
+    // clean tags
+    var goodTags []string
+    for _, t := range tags {
+        t = strings.TrimSpace(t)
+        if t != "" { goodTags = append(goodTags, t) }
+    }
+
+    tasks := repo.List(q, goodTags, (page-1)*limit, limit)
+    return c.JSON(tasks)
+})
+```
+
+### Example 3 — Parsing boolean
+
+```go
+archived, _ := strconv.ParseBool(c.Query("archived", "false"))
+// ParseBool handles "true","false","1","0" etc.
+```
+
+---
+
+# 9. Best practices — a short checklist
+
+* Use **params** for resource identity; use **queries** for optional filters/pagination.
+* Always **validate & sanitize**.
+* Provide sensible **defaults** and enforce **maximums**.
+* For arrays, prefer a consistent pattern (CSV or repeated keys) — document it in our API docs.
+* Consider binding queries to structs when there are many options (with `QueryParser` or manual decoding).
+* Use `application/x-www-form-urlencoded` for form submissions (client side) and map to queries if needed.
+* Document allowed query params in API docs (OpenAPI/Swagger).
+
+---
+
+# 10. API docs / OpenAPI tip
+
+When generating OpenAPI specs, list each path param (required) and each query parameter (name, type, required/optional, default). Example:
+
+```yaml
+paths:
+  /tasks:
+    get:
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: tags
+          schema: { type: string }
+```
+
+Document how arrays are encoded (CSV vs repeated keys).
+
+---
+
+# 11. Common pitfalls to avoid
+
+* Assuming `c.Query("k")` returns `nil` — it returns `""` when missing.
+* Forgetting to `strconv`-parse and validate numeric params.
+* Using path params for optional filters (makes routes less flexible).
+* Passing unsanitized param values into file paths or SQL strings.
+* Not constraining `limit`/`page`, allowing huge DB queries.
+
+---
+
+# 12. TL;DR (practical cheat-sheet)
+
+* Get path param: `id := c.Params("id")`
+* Get query param with default: `page := c.Query("page", "1")`
+* Convert: `p, err := strconv.Atoi(page)`
+* Parse bool: `b, _ := strconv.ParseBool(c.Query("flag", "false"))`
+* CSV arrays: `tags := strings.Split(c.Query("tags", ""), ",")`
+* Validate everything, sanitize if used in FS/DB.
+* Use server-side session/auth checks when params imply authorization.
+
+---
 
 
 
