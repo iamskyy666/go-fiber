@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -12,29 +11,23 @@ import (
 func main() {
 	app := fiber.New()
 	
-app.Post("/upload-doc", func(c *fiber.Ctx) error {
-  // Parse the multipart form:
-  if form, err := c.MultipartForm(); err == nil {
-    // => *multipart.Form
 
-    // Get all files from "documents" key:
-    files := form.File["documents"]
-    // => []*multipart.FileHeader
+type keyType struct{}
+var userKey keyType
 
-    // Loop through files:
-    for _, file := range files {
-      //name:=fmt.Sprintf(file.Filename, file.Size, time.Now().String())
-      // => "tutorial.pdf" 360641 "application/pdf"
+app.Use(func(c *fiber.Ctx) error {
+  c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
+  return c.Next()
+})
 
-      // Save the files to disk:
-      if err := c.SaveFile(file, fmt.Sprintf("./%s", time.Now().String())); err != nil {
-        return err
-      }
-    }
-    return err
+app.Get("/admin", func(c *fiber.Ctx) error {
+  user, ok := c.Locals(userKey).(string) // Retrieves the data stored under the key and performs a type assertion
+  if ok && user == "admin" {
+    return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
   }
-  return c.SendStatus(fiber.StatusOK)
+  return c.SendStatus(fiber.StatusForbidden)
 })
 	fmt.Println("Server Up N Running.. ✅")
 	log.Fatal(app.Listen(":3000"))
+
 }
